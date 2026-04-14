@@ -60,6 +60,46 @@ graph TD
 
 ---
 
+## 📁 Project Directory Structure
+
+The project is structured as a monorepo, strictly separating the frontend, backend, and computer vision engine into their own distinct domains.
+
+```text
+ai-virtual-whiteboard/
+│
+├── client/                              # 🌐 REACT FRONTEND
+│   ├── public/
+│   ├── src/
+│   │   ├── components/                  # Reusable UI components
+│   │   │   └── Whiteboard.jsx           # Core canvas rendering & socket connection
+│   │   ├── hooks/
+│   │   │   └── useCanvas.js             # Custom hook handling HTML5 Canvas API logic
+│   │   ├── App.jsx                      # Main application view
+│   │   └── index.css                    # Tailwind CSS global styles
+│   ├── package.json
+│   └── vite.config.js                   # Vite frontend bundler configuration
+│
+├── server/                              # ⚙️ NODE.JS + EXPRESS BACKEND
+│   ├── sockets/
+│   │   └── socketHandler.js             # Modular Socket.io logic ('draw', 'erase', 'clear')
+│   ├── index.js                         # Main Express server entry point
+│   └── package.json
+│
+├── cv-module/                           # 🧠 PYTHON COMPUTER VISION ENGINE
+│   ├── modules/
+│   │   ├── hand_tracking.py             # MediaPipe initialization and landmark extraction
+│   │   ├── gesture_classifier.py        # Logic to convert landmarks into 'draw', 'erase', 'stop'
+│   │   └── smoothing.py                 # Moving average filter math classes
+│   ├── utils/
+│   │   └── fps_counter.py               # Utility to measure processing speed
+│   ├── tracker.py                       # Main execution script (captures webcam, emits sockets)
+│   └── requirements.txt                 # Python dependencies
+│
+└── README.md                            # Comprehensive setup and architecture docs
+```
+
+---
+
 ## ⚙️ Environment Configuration
 
 Define the following environment variables in `.env` files for each respective module before deployment.
@@ -98,7 +138,7 @@ Open three separate terminal instances:
 ```bash
 cd server
 npm install
-npm start
+node index.js
 ```
 
 **Terminal 2: Frontend**
