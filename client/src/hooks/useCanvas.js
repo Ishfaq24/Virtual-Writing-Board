@@ -5,34 +5,28 @@ export const useCanvas = () => {
     const ctxRef = useRef(null);
     const lastPos = useRef({ x: null, y: null });
 
-    useEffect(() => {
+    const setupCanvas = useCallback(() => {
         const canvas = canvasRef.current;
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        if (!canvas) return;
+        
+        // Match the canvas internal resolution to its actual display size in the browser
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
         
         const ctx = canvas.getContext('2d');
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        
-        // CRITICAL FOR AI: Fill background with solid white
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctxRef.current = ctx;
-
-        const handleResize = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            const newCtx = canvas.getContext('2d');
-            newCtx.lineCap = 'round';
-            newCtx.lineJoin = 'round';
-            newCtx.fillStyle = "#ffffff";
-            newCtx.fillRect(0, 0, canvas.width, canvas.height);
-            ctxRef.current = newCtx;
-        };
-        
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
     }, []);
+
+    useEffect(() => {
+        setupCanvas();
+        window.addEventListener('resize', setupCanvas);
+        return () => window.removeEventListener('resize', setupCanvas);
+    }, [setupCanvas]);
 
     const draw = useCallback((data) => {
         const ctx = ctxRef.current;
@@ -53,7 +47,6 @@ export const useCanvas = () => {
         } else if (data.action === 'draw') {
             ctx.globalCompositeOperation = 'source-over';
             ctx.lineWidth = 10;
-            // CRITICAL FOR AI: Use solid black ink for maximum contrast
             ctx.strokeStyle = '#000000'; 
         }
 
@@ -82,14 +75,12 @@ export const useCanvas = () => {
         const ctx = ctxRef.current;
         if (!ctx || !canvas) return;
 
-        clearCanvas(); // Wipe the messy writing
-        
+        clearCanvas();
         ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = '#2563eb'; // Blue text for the final beautiful result
-        ctx.font = 'bold 100px system-ui, sans-serif';
+        ctx.fillStyle = '#1976d2'; // MUI Primary Blue
+        ctx.font = 'bold 80px Roboto, Helvetica, Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        
         ctx.fillText(text, canvas.width / 2, canvas.height / 2);
     }, [clearCanvas]);
 

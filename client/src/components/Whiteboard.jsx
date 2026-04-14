@@ -1,15 +1,29 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useCanvas } from '../hooks/useCanvas';
+import WhiteboardToolbar from './Toolbar';
+
+// MUI Components
+import { 
+    Typography, Box, Paper, Button, 
+    Container, Stack, Divider, List, ListItem, ListItemText 
+} from '@mui/material';
+
+// MUI Icons
+import DeleteIcon from '@mui/icons-material/Delete';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import GestureIcon from '@mui/icons-material/Gesture';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 
 const SOCKET_SERVER_URL = 'http://localhost:5000';
 
 export default function Whiteboard() {
     const { canvasRef, draw, clearCanvas, drawBeautifulText, getCanvasImage } = useCanvas();
     const [isProcessing, setIsProcessing] = useState(false);
-    const [socket, setSocket] = useState(null); // Save socket to state to use it in buttons
+    const [socket, setSocket] = useState(null);
+    const [recentWords, setRecentWords] = useState([]); // Store history of words
     
-    // Timers for Auto-AI
     const autoConvertTimeout = useRef(null);
     const hasUnconvertedDrawing = useRef(false);
 
@@ -17,12 +31,8 @@ export default function Whiteboard() {
         const newSocket = io(SOCKET_SERVER_URL);
         setSocket(newSocket);
 
-        newSocket.on('connect', () => console.log('[+] Connected'));
-        
         newSocket.on('draw_event', (data) => {
             draw(data);
-
-            // 🪄 AUTO-MAGIC TIMER LOGIC
             if (data.action === 'draw' || data.action === 'erase') {
                 hasUnconvertedDrawing.current = true;
                 if (autoConvertTimeout.current) clearTimeout(autoConvertTimeout.current);
@@ -30,15 +40,8 @@ export default function Whiteboard() {
             else if (data.action === 'stop' || data.action === 'hover') {
                 if (hasUnconvertedDrawing.current) {
                     if (autoConvertTimeout.current) clearTimeout(autoConvertTimeout.current);
-                    
-                    // Wait 2 seconds after writing stops, then capture and send to AI
                     autoConvertTimeout.current = setTimeout(() => {
-                        console.log("⏱️ Auto-triggering AI...");
-                        const base64Image = getCanvasImage();
-                        if (base64Image) {
-                            newSocket.emit('beautify_request', base64Image);
-                        }
-                        hasUnconvertedDrawing.current = false;
+                        triggerBeautify(newSocket);
                     }, 2000); 
                 }
             }
@@ -48,8 +51,8 @@ export default function Whiteboard() {
         newSocket.on('is_beautifying', (status) => setIsProcessing(status));
         
         newSocket.on('beautify_result', (beautifulText) => {
-            console.log("AI Converted Text:", beautifulText);
             drawBeautifulText(beautifulText);
+            setRecentWords(prev => [beautifulText, ...prev].slice(0, 5)); // Keep last 5
         });
 
         newSocket.on('init_canvas', (history) => {
@@ -61,51 +64,123 @@ export default function Whiteboard() {
             if (autoConvertTimeout.current) clearTimeout(autoConvertTimeout.current);
             newSocket.disconnect();
         };
-    }, [draw, clearCanvas, drawBeautifulText, getCanvasImage]);
+    }, [draw, clearCanvas, drawBeautifulText]);
 
-    // Handle clicking the manual Clear / Trash button
-    const handleClear = () => {
-        if (socket) {
-            socket.emit('clear_canvas');
+    const triggerBeautify = (activeSocket = socket) => {
+        if (!activeSocket) return;
+        const base64Image = getCanvasImage();
+        if (base64Image) {
+            activeSocket.emit('beautify_request', base64Image);
         }
+        hasUnconvertedDrawing.current = false;
+    };
+
+    const handleClear = () => {
+        if (socket) socket.emit('clear_canvas');
         clearCanvas();
-        // Abort the AI countdown if the user manually cleared the board
         if (autoConvertTimeout.current) clearTimeout(autoConvertTimeout.current);
         hasUnconvertedDrawing.current = false;
     };
 
+    const handleManualBeautify = () => {
+        if (autoConvertTimeout.current) clearTimeout(autoConvertTimeout.current);
+        triggerBeautify();
+    };
+
     return (
-        <div className="relative w-screen h-screen bg-white overflow-hidden">
-            {/* Toolbar Overlay */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white px-6 py-3 rounded-full shadow-lg flex gap-4 z-10 border border-slate-200 items-center">
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="text-sm font-medium text-slate-700">Tracking</span>
-                </div>
-                <div className="w-px h-6 bg-slate-200 mx-2"></div>
-                <span className="text-sm text-slate-500">☝️ Draw</span>
-                <span className="text-sm text-slate-500">✌️ Erase</span>
-                <span className="text-sm text-slate-500">✊ Stop</span>
-                <div className="w-px h-6 bg-slate-200 mx-2"></div>
+        <Box sx={{ minHeight: '100vh', backgroundColor: '#f0f2f5', pb: 5, pt: 10 }}>
+            {/* TOP NAVIGATION BAR */}
+            <WhiteboardToolbar />
+
+            <Container maxWidth="lg" sx={{ mt: 4 }}>
                 
-                {/* 🗑️ Explicit Clear Button */}
-                <button 
-                    onClick={handleClear}
-                    className="px-3 py-1.5 rounded-full text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all"
+                {/* THE DRAWING CANVAS */}
+                <Paper 
+                    elevation={4} 
+                    sx={{ 
+                        width: '100%', 
+                        height: '500px', 
+                        overflow: 'hidden', 
+                        borderRadius: 2,
+                        mb: 4,
+                        border: '2px solid #e2e8f0'
+                    }}
                 >
-                    🗑️ Clear
-                </button>
+                    <canvas ref={canvasRef} style={{ width: '100%', height: '100%', cursor: 'crosshair' }} />
+                </Paper>
 
-                {/* Auto-AI Status Indicator */}
-                <div className={`px-4 py-1.5 rounded-full text-sm font-bold text-white transition-all duration-300 ${
-                        isProcessing ? 'bg-indigo-600 animate-pulse scale-105 shadow-md' : 'bg-slate-400'
-                    }`}
-                >
-                    {isProcessing ? '🤖 AI Reading...' : '✨ Auto-Beautify Ready'}
-                </div>
-            </div>
+                {/* CAMERA PREVIEW */}
 
-            <canvas ref={canvasRef} className="w-full h-full cursor-crosshair" />
-        </div>
+                {/* BOTTOM STUDIO PANEL */}
+                <Paper elevation={2} sx={{ p: 4, borderRadius: 2, backgroundColor: '#ffffff' }}>
+                    <Typography variant="overline" color="primary" sx={{ fontWeight: 'bold', letterSpacing: 1 }}>
+                        Air Ink Studio
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 'bold', mt: 1, mb: 1, color: '#0f172a' }}>
+                        Turn gestures into perfect type
+                    </Typography>
+                    <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                        Write in the air, we clean it up and project beautiful text back to your canvas.
+                    </Typography>
+
+                    <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
+                        <Button 
+                            variant="outlined" 
+                            color="error" 
+                            startIcon={<DeleteIcon />} 
+                            onClick={handleClear}
+                        >
+                            Clear board
+                        </Button>
+                        <Button 
+                            variant="contained" 
+                            color="primary" 
+                            startIcon={<AutoAwesomeIcon />} 
+                            onClick={handleManualBeautify}
+                            disabled={isProcessing}
+                        >
+                            Beautify now
+                        </Button>
+                    </Stack>
+
+                    <Divider sx={{ mb: 3 }} />
+
+                    {/* STATUS AND RECENT HISTORY */}
+                    <Box sx={{ display: 'flex', gap: 4 }}>
+                        <Box sx={{ flex: 1 }}>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2, display: 'flex', alignItems: 'center' }}>
+                                <SmartToyIcon sx={{ mr: 1, color: isProcessing ? '#8b5cf6' : '#64748b' }} />
+                                {isProcessing ? 'AI is processing...' : 'Status: Idle'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                {isProcessing 
+                                    ? "Reading your handwriting via Vision AI..." 
+                                    : "Write a word in the air and pause for 2 seconds."}
+                            </Typography>
+                        </Box>
+
+                        <Box sx={{ flex: 1 }}>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                                Recent outputs
+                            </Typography>
+                            {recentWords.length === 0 ? (
+                                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                    Your beautiful words will appear here.
+                                </Typography>
+                            ) : (
+                                <List dense sx={{ pt: 0 }}>
+                                    {recentWords.map((word, index) => (
+                                        <ListItem key={index} sx={{ px: 0, py: 0.5 }}>
+                                            <FiberManualRecordIcon sx={{ fontSize: 10, color: '#3b82f6', mr: 1.5 }} />
+                                            <ListItemText primary={word} primaryTypographyProps={{ fontWeight: 'medium' }} />
+                                        </ListItem>
+                                    ))}
+                                </List>
+                            )}
+                        </Box>
+                    </Box>
+                </Paper>
+            </Container>
+        </Box>
     );
 }
