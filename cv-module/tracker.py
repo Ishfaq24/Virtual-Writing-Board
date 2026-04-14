@@ -41,7 +41,7 @@ def main():
     cap = cv2.VideoCapture(0)
     tracker = HandTracker()
     classifier = GestureClassifier()
-    smoother = PointSmoother(window_size=5)
+    smoother = PointSmoother(alpha=0.4)
     fps_counter = FPSCounter()
 
     print("[INFO] Starting Webcam feed...")
