@@ -5,49 +5,34 @@ export const useCanvas = () => {
     const ctxRef = useRef(null);
     const lastPos = useRef({ x: null, y: null });
 
-    useEffect(() => {
+    const setupCanvas = useCallback(() => {
         const canvas = canvasRef.current;
-        // Make canvas full screen
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        if (!canvas) return;
+        
+        // Match the canvas internal resolution to its actual display size in the browser
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
         
         const ctx = canvas.getContext('2d');
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctxRef.current = ctx;
-
-        // Handle window resize dynamically
-        const handleResize = () => {
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            tempCtx.drawImage(canvas, 0, 0);
-
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            
-            // Restore context settings after resize
-            const newCtx = canvas.getContext('2d');
-            newCtx.lineCap = 'round';
-            newCtx.lineJoin = 'round';
-            newCtx.drawImage(tempCanvas, 0, 0);
-            ctxRef.current = newCtx;
-        };
-        
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Wrap in useCallback so it doesn't trigger re-renders
+    useEffect(() => {
+        setupCanvas();
+        window.addEventListener('resize', setupCanvas);
+        return () => window.removeEventListener('resize', setupCanvas);
+    }, [setupCanvas]);
+
     const draw = useCallback((data) => {
         const ctx = ctxRef.current;
         const canvas = canvasRef.current;
-        
         if (!ctx || !canvas) return;
 
-        // Map normalized coordinates (0.0 - 1.0) back to actual screen pixels
-        // Use a fallback of 0 if normalized data is missing to prevent NaN errors
         const currentX = (data.normalizedX || 0) * canvas.width;
         const currentY = (data.normalizedY || 0) * canvas.height;
 
@@ -61,8 +46,8 @@ export const useCanvas = () => {
             ctx.lineWidth = 40; 
         } else if (data.action === 'draw') {
             ctx.globalCompositeOperation = 'source-over';
-            ctx.lineWidth = 6;
-            ctx.strokeStyle = '#2563eb'; // Blue color
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = '#000000'; 
         }
 
         if (lastPos.current.x !== null) {
@@ -79,9 +64,30 @@ export const useCanvas = () => {
         const canvas = canvasRef.current;
         const ctx = ctxRef.current;
         if (ctx && canvas) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
     }, []);
 
-    return { canvasRef, draw, clearCanvas };
+    const drawBeautifulText = useCallback((text) => {
+        const canvas = canvasRef.current;
+        const ctx = ctxRef.current;
+        if (!ctx || !canvas) return;
+
+        clearCanvas();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = '#1976d2'; // MUI Primary Blue
+        ctx.font = 'bold 80px Roboto, Helvetica, Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    }, [clearCanvas]);
+
+    const getCanvasImage = useCallback(() => {
+        if (!canvasRef.current) return null;
+        return canvasRef.current.toDataURL('image/png');
+    }, []);
+
+    return { canvasRef, draw, clearCanvas, drawBeautifulText, getCanvasImage };
 };

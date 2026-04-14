@@ -1,13 +1,17 @@
 import cv2
 import socketio
 import os
+import time
 from modules.hand_tracking import HandTracker
 from modules.gesture_classifier import GestureClassifier
 from modules.smoothing import PointSmoother
 from utils.fps_counter import FPSCounter
 
-# CRITICAL FIX FOR WINDOWS: Use 127.0.0.1 instead of localhost
+# Configuration via environment variables for flexibility
 SOCKET_URL = os.getenv('BACKEND_URL', 'http://127.0.0.1:5000')
+CAMERA_INDEX = int(os.getenv('CAMERA_INDEX', '0'))
+SMOOTHING_ALPHA = float(os.getenv('SMOOTHING_ALPHA', '0.4'))
+MIN_MOVE_PX = float(os.getenv('MIN_MOVE_PX', '3.0'))
 
 # Initialize Socket.io Client
 sio = socketio.Client()
@@ -28,20 +32,28 @@ def disconnect():
 
 def main():
     print(f"[INFO] Attempting to connect to backend at {SOCKET_URL}...")
-    try:
-        # CRITICAL FIX: Explicitly define transports
-        sio.connect(SOCKET_URL, transports=['websocket', 'polling'])
-    except Exception as e:
-        print("\n" + "!"*50)
-        print(f"[FATAL ERROR] Could not connect to backend: {e}")
-        print("Please ensure your Node.js server is running first!")
-        print("!"*50 + "\n")
-        print("Starting in local-only mode (UI rendering disabled).")
+    # Retry a few times before giving up, to handle slow server startup
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            sio.connect(SOCKET_URL, transports=['websocket', 'polling'])
+            break
+        except Exception as e:
+            print(f"[WARN] Connection attempt {attempt}/{max_retries} failed: {e}")
+            if attempt == max_retries:
+                print("\n" + "!"*50)
+                print("[FATAL ERROR] Could not connect to backend after several attempts.")
+                print("Please ensure your Node.js server is running first!")
+                print("Running in local-only mode (UI rendering disabled).")
+                print("!"*50 + "\n")
+            else:
+                time.sleep(2)
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(CAMERA_INDEX)
     tracker = HandTracker()
     classifier = GestureClassifier()
-    smoother = PointSmoother(window_size=5)
+    smoother = PointSmoother(alpha=SMOOTHING_ALPHA)
+    last_sent_pt = None
     fps_counter = FPSCounter()
 
     print("[INFO] Starting Webcam feed...")
@@ -65,7 +77,16 @@ def main():
                 
                 if action in ["draw", "erase"]:
                     smooth_pt = smoother.update(raw_pt)
-                    
+
+                    # Movement threshold to ignore tiny jitter
+                    if last_sent_pt is not None:
+                        dx = smooth_pt[0] - last_sent_pt[0]
+                        dy = smooth_pt[1] - last_sent_pt[1]
+                        dist_sq = dx * dx + dy * dy
+                        if dist_sq < MIN_MOVE_PX * MIN_MOVE_PX:
+                            # Skip sending this frame to keep strokes clean
+                            continue
+
                     # Normalize coordinates for the React frontend (resolution independence)
                     norm_x = smooth_pt[0] / w
                     norm_y = smooth_pt[1] / h
@@ -78,16 +99,19 @@ def main():
                             'normalizedY': norm_y,
                             'action': action
                         })
+                        last_sent_pt = smooth_pt
                     
                     # Local visual feedback
                     color = (0, 255, 0) if action == "draw" else (0, 0, 255)
                     cv2.circle(frame, smooth_pt, 10, color, cv2.FILLED)
                 else:
                     smoother.reset()
+                    last_sent_pt = None
                     if sio.connected:
                         sio.emit('gesture_data', {'action': 'hover'})
         else:
             smoother.reset()
+            last_sent_pt = None
             if sio.connected:
                 sio.emit('gesture_data', {'action': 'stop'})
 

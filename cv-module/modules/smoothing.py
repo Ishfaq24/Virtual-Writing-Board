@@ -1,19 +1,22 @@
-import numpy as np
-
 class PointSmoother:
-    """Moving average filter to reduce jitter in landmark coordinates."""
-    def __init__(self, window_size=5):
-        self.points = []
-        self.window_size = window_size
+    def __init__(self, alpha=0.4):
+        # alpha controls smoothness. 
+        # 1.0 = no smoothing. 
+        # 0.4 = very smooth, feels like a real heavy pen.
+        self.alpha = alpha
+        self.last_pt = None
 
     def update(self, pt):
-        self.points.append(pt)
-        if len(self.points) > self.window_size:
-            self.points.pop(0)
+        if self.last_pt is None:
+            self.last_pt = pt
+            return pt
         
-        avg_x = int(np.mean([p[0] for p in self.points]))
-        avg_y = int(np.mean([p[1] for p in self.points]))
-        return (avg_x, avg_y)
+        # Exponential Moving Average calculation for ultra-smooth lines
+        smooth_x = int(self.alpha * pt[0] + (1 - self.alpha) * self.last_pt[0])
+        smooth_y = int(self.alpha * pt[1] + (1 - self.alpha) * self.last_pt[1])
+        
+        self.last_pt = (smooth_x, smooth_y)
+        return self.last_pt
 
     def reset(self):
-        self.points.clear()
+        self.last_pt = None
