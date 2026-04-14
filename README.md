@@ -33,22 +33,34 @@ The **Virtual Writing Board** is a production-ready, distributed system that all
 The system is decoupled into three distinct tiers. **Note for production:** The CV Module runs on the *Edge* (the user's physical machine with the webcam), while the React Frontend and Node Backend are deployed to the *Cloud*.
 
 ```mermaid
-graph TD
-    subgraph "Edge Device (User Machine)"
-        Cam[Webcam] --> CV[Python CV Module]
-        CV -->|MediaPipe & OpenCV| Tracker[Gesture Classifier]
-    end
-
-    subgraph "Cloud Infrastructure"
-        Tracker -->|Socket.IO (WSS)| Node[Node.js WebSocket Server]
-        Node <-->|Pub/Sub| Redis[(Redis Adapter for Scaling)]
-        Node <-->|State Persistence| DB[(MongoDB)]
-    end
-
-    subgraph "Client Browsers"
-        Node -->|WSS Broadcast| Browser1[React Client 1]
-        Node -->|WSS Broadcast| Browser2[React Client 2]
-    end
+┌──────────────────────────────┐
+│        EDGE DEVICE           │
+│                              │
+│  [ Webcam ]                  │
+│      │                       │
+│      ▼ (Video Frames)        │
+│  [ Python CV Module ]        │
+│  (MediaPipe + OpenCV)        │
+└──────────────┬───────────────┘
+               │
+               │ (Socket.IO / WebSockets)
+               │ {x, y, action}
+               ▼
+┌──────────────────────────────┐
+│        CLOUD BACKEND         │
+│                              │
+│  [ Node.js + Express ]       │
+│  [ Socket.IO Server  ]       │
+└──────────────┬───────────────┘
+               │
+               │ (Broadcasts events)
+               │
+      ┌────────┴────────┐
+      ▼                 ▼
+┌────────────┐   ┌────────────┐
+│ Browser 1  │   │ Browser 2  │
+│ (React UI) │   │ (React UI) │
+└────────────┘   └────────────┘
 ```
 
 ### 🛠️ Tech Stack
