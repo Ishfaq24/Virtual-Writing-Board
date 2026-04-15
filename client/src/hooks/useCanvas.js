@@ -4,6 +4,13 @@ export const useCanvas = () => {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const lastPos = useRef({ x: null, y: null });
+  const boundsRef = useRef({
+    minX: Infinity,
+    minY: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+    hasDrawing: false,
+  });
 
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -21,6 +28,15 @@ export const useCanvas = () => {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctxRef.current = ctx;
+
+    // reset drawing bounds
+    boundsRef.current = {
+      minX: Infinity,
+      minY: Infinity,
+      maxX: -Infinity,
+      maxY: -Infinity,
+      hasDrawing: false,
+    };
   }, []);
 
   useEffect(() => {
@@ -58,6 +74,16 @@ export const useCanvas = () => {
       ctx.stroke();
     }
 
+    // update handwriting bounds for cropping (draw only)
+    if (data.action === 'draw') {
+      const b = boundsRef.current;
+      b.minX = Math.min(b.minX, currentX);
+      b.minY = Math.min(b.minY, currentY);
+      b.maxX = Math.max(b.maxX, currentX);
+      b.maxY = Math.max(b.maxY, currentY);
+      b.hasDrawing = true;
+    }
+
     lastPos.current = { x: currentX, y: currentY };
   }, []);
 
@@ -68,6 +94,14 @@ export const useCanvas = () => {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    lastPos.current = { x: null, y: null };
+    boundsRef.current = {
+      minX: Infinity,
+      minY: Infinity,
+      maxX: -Infinity,
+      maxY: -Infinity,
+      hasDrawing: false,
+    };
   }, []);
 
   const drawBeautifulText = useCallback((text) => {
@@ -86,9 +120,35 @@ export const useCanvas = () => {
   }, [clearCanvas]);
 
   const getCanvasImage = useCallback(() => {
-    if (!canvasRef.current) return null;
-    // return PNG data URL
-    return canvasRef.current.toDataURL('image/png');
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const bounds = boundsRef.current;
+    if (!bounds.hasDrawing || bounds.minX === Infinity) {
+      // fall back to full canvas if nothing drawn
+      return canvas.toDataURL('image/png');
+    }
+
+    const padding = 40;
+    const sx = Math.max(0, Math.floor(bounds.minX - padding));
+    const sy = Math.max(0, Math.floor(bounds.minY - padding));
+    const ex = Math.min(canvas.width, Math.ceil(bounds.maxX + padding));
+    const ey = Math.min(canvas.height, Math.ceil(bounds.maxY + padding));
+    const sw = Math.max(1, ex - sx);
+    const sh = Math.max(1, ey - sy);
+
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = sw;
+    tmpCanvas.height = sh;
+    const tmpCtx = tmpCanvas.getContext('2d');
+    if (!tmpCtx) return canvas.toDataURL('image/png');
+
+    // white background + cropped content
+    tmpCtx.fillStyle = '#ffffff';
+    tmpCtx.fillRect(0, 0, sw, sh);
+    tmpCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    return tmpCanvas.toDataURL('image/png');
   }, []);
 
   return { canvasRef, draw, clearCanvas, drawBeautifulText, getCanvasImage };

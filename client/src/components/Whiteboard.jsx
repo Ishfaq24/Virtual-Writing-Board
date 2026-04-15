@@ -5,7 +5,9 @@ import WhiteboardToolbar from './Toolbar';
 
 import {
   Typography, Box, Paper, Button,
-  Container, Stack, Divider, List, ListItem, ListItemText
+  Container, Stack, Divider, List, ListItem, ListItemText,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -22,6 +24,7 @@ export default function Whiteboard() {
   const [socket, setSocket] = useState(null);
   const [recentWords, setRecentWords] = useState([]);
   const [pointer, setPointer] = useState({ x: null, y: null, mode: 'idle' });
+  const [aiMode, setAiMode] = useState('word');
 
   const autoConvertTimeout = useRef(null);
   const hasUnconvertedDrawing = useRef(false);
@@ -76,7 +79,12 @@ export default function Whiteboard() {
   const triggerBeautify = (activeSocket = socket) => {
     if (!activeSocket) return;
     const base64Image = getCanvasImage();
-    if (base64Image) activeSocket.emit('beautify_request', base64Image);
+    if (base64Image) {
+      activeSocket.emit('beautify_request', {
+        image: base64Image,
+        mode: aiMode,
+      });
+    }
     hasUnconvertedDrawing.current = false;
   };
 
@@ -91,6 +99,11 @@ export default function Whiteboard() {
   const handleManualBeautify = () => {
     if (autoConvertTimeout.current) clearTimeout(autoConvertTimeout.current);
     triggerBeautify();
+  };
+
+  const handleAiModeChange = (_event, value) => {
+    if (!value) return;
+    setAiMode(value);
   };
 
   return (
@@ -145,13 +158,25 @@ export default function Whiteboard() {
             Write in the air, we clean it up and project beautiful text back to your canvas.
           </Typography>
 
-          <Stack direction="row" spacing={2} sx={{ mb: 4 }}>
+          <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }}>
             <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={handleClear}>
               Clear board
             </Button>
             <Button variant="contained" color="primary" startIcon={<AutoAwesomeIcon />} onClick={handleManualBeautify} disabled={isProcessing}>
               Beautify now
             </Button>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={aiMode}
+              onChange={handleAiModeChange}
+              sx={{ ml: 'auto' }}
+              color="primary"
+            >
+              <ToggleButton value="word">Word</ToggleButton>
+              <ToggleButton value="phrase">Phrase</ToggleButton>
+              <ToggleButton value="math">Math</ToggleButton>
+            </ToggleButtonGroup>
           </Stack>
 
           <Divider sx={{ mb: 3 }} />
