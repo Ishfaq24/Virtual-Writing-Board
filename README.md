@@ -32,7 +32,7 @@ The **Virtual Writing Board** is a production-ready, distributed system that all
 
 The system is decoupled into three distinct tiers. **Note for production:** The CV Module runs on the *Edge* (the user's physical machine with the webcam), while the React Frontend and Node Backend are deployed to the *Cloud*.
 
-```mermaid
+```
 ┌──────────────────────────────┐
 │        EDGE DEVICE           │
 │                              │
