@@ -12,6 +12,7 @@ SOCKET_URL = os.getenv('BACKEND_URL', 'http://127.0.0.1:5000')
 CAMERA_INDEX = int(os.getenv('CAMERA_INDEX', '0'))
 SMOOTHING_ALPHA = float(os.getenv('SMOOTHING_ALPHA', '0.4'))
 MIN_MOVE_PX = float(os.getenv('MIN_MOVE_PX', '3.0'))
+ACTION_STABILITY_FRAMES = int(os.getenv('ACTION_STABILITY_FRAMES', '3'))
 
 # Initialize Socket.io Client
 sio = socketio.Client()
@@ -54,6 +55,13 @@ def main():
     classifier = GestureClassifier()
     smoother = PointSmoother(alpha=SMOOTHING_ALPHA)
     last_sent_pt = None
+
+    # Gesture mode debouncing: require N consecutive frames
+    # before switching between draw/erase/stop to avoid flicker.
+    stable_action = "stop"
+    stable_point = None
+    pending_action = None
+    pending_count = 0
     fps_counter = FPSCounter()
 
     print("[INFO] Starting Webcam feed...")
@@ -72,9 +80,31 @@ def main():
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 tracker.draw_landmarks(frame, hand_landmarks)
-                
-                action, raw_pt = classifier.classify(hand_landmarks.landmark, w, h)
-                
+
+                proposed_action, proposed_pt = classifier.classify(hand_landmarks.landmark, w, h)
+
+                # Debounce rapid gesture changes to keep modes stable
+                if proposed_action == stable_action:
+                    pending_action = None
+                    pending_count = 0
+                    if proposed_action in ["draw", "erase"]:
+                        stable_point = proposed_pt
+                else:
+                    if pending_action == proposed_action:
+                        pending_count += 1
+                    else:
+                        pending_action = proposed_action
+                        pending_count = 1
+
+                    if pending_count >= ACTION_STABILITY_FRAMES:
+                        stable_action = proposed_action
+                        stable_point = proposed_pt
+                        pending_action = None
+                        pending_count = 0
+
+                action = stable_action
+                raw_pt = stable_point if stable_point is not None else proposed_pt
+
                 if action in ["draw", "erase"]:
                     smooth_pt = smoother.update(raw_pt)
 
