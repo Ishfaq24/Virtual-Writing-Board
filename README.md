@@ -120,7 +120,7 @@ Define the following environment variables in `.env` files for each respective m
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `5000` | Port for the Node.js server. |
-| `CORS_ORIGIN` | `*` | Allowed origins (e.g., `https://my-app.com`). |
+| `CLIENT_ORIGIN` | `http://localhost:5173,http://localhost:5174` | Comma-separated allowed frontend origins. |
 | `REDIS_URL` | `null` | Redis connection string for multi-instance scaling. |
 
 ### Edge AI (`cv-module/.env`)
@@ -133,6 +133,7 @@ Define the following environment variables in `.env` files for each respective m
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VITE_SOCKET_URL` | `http://localhost:5000` | Target WebSocket server for the browser client. |
+| Location | `client/.env` | Vite reads environment files from the client root, not `client/src`. |
 
 ---
 
@@ -159,7 +160,7 @@ cd client
 npm install
 npm run dev
 ```
-*(Navigate to `http://localhost:5173` in your browser)*
+*(Navigate to the local Vite URL shown in the terminal. If Vite picks `5174`, the backend already allows it.)*
 
 **Terminal 3: CV Edge Tracker**
 ```bash
@@ -169,6 +170,16 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python tracker.py
 ```
+
+## ✅ Startup Checklist
+
+Use this after launching the three processes:
+
+1. Open the browser app and confirm the toolbar says `Backend connected`.
+2. Draw with the webcam or use the canvas directly with the mouse or trackpad.
+3. Right-click and drag to erase in the browser canvas.
+4. Confirm the backend console logs `draw_event` traffic and the canvas updates in real time.
+5. Press `C` in the OpenCV window to confirm the shared canvas clears.
 
 ---
 

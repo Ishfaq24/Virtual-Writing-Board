@@ -22,7 +22,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
  * - isConnected: whether the backend/socket is currently connected.
  */
 function WhiteboardToolbar({ isConnected = true }) {
-	const statusLabel = isConnected ? 'Live from camera' : 'Waiting for backend';
+	const statusLabel = isConnected ? 'Backend connected' : 'Local-only mode';
 	const statusColor = isConnected ? '#22c55e' : '#f97373';
 
 	return (

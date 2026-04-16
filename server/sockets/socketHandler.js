@@ -9,6 +9,10 @@ const openai = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
 });
 
+// Simple per-socket rate limiting for beautify requests
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.BEAUTIFY_WINDOW_MS || '10000', 10); // 10s
+const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.BEAUTIFY_MAX_REQUESTS || '3', 10); // 3 per window
+
 // helper to validate and normalize gestures from the CV module
 function normalizeGesturePayload(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -21,6 +25,7 @@ function normalizeGesturePayload(raw) {
   const y = typeof raw.y === 'number' ? raw.y : null;
   let normalizedX = typeof raw.normalizedX === 'number' ? raw.normalizedX : null;
   let normalizedY = typeof raw.normalizedY === 'number' ? raw.normalizedY : null;
+  const clientId = typeof raw.clientId === 'string' && raw.clientId.trim() ? raw.clientId.trim() : null;
 
   if (normalizedX !== null) normalizedX = Math.min(1, Math.max(0, normalizedX));
   if (normalizedY !== null) normalizedY = Math.min(1, Math.max(0, normalizedY));
@@ -31,6 +36,7 @@ function normalizeGesturePayload(raw) {
     y,
     normalizedX,
     normalizedY,
+    clientId,
   };
 }
 
@@ -59,6 +65,13 @@ module.exports = (io) => {
 
   io.on('connection', (socket) => {
     console.log(`[+] User/Client connected: ${socket.id}`);
+
+    // Track rate limiting state per socket
+    const rateState = {
+      windowStart: Date.now(),
+      count: 0,
+    };
+
     socket.emit('init_canvas', canvasState);
 
     socket.on('gesture_data', (data) => {
@@ -82,6 +95,24 @@ module.exports = (io) => {
 
     // AI / Vision beautify request
     socket.on('beautify_request', async (payload) => {
+      // Basic per-socket rate limiting
+      const now = Date.now();
+      if (now - rateState.windowStart > RATE_LIMIT_WINDOW_MS) {
+        rateState.windowStart = now;
+        rateState.count = 0;
+      }
+      rateState.count += 1;
+      if (rateState.count > RATE_LIMIT_MAX_REQUESTS) {
+        const retryAfter = Math.max(0, RATE_LIMIT_WINDOW_MS - (now - rateState.windowStart));
+        console.warn(`[AI] Rate limit exceeded for socket ${socket.id}`);
+        socket.emit('beautify_error', {
+          code: 'rate_limited',
+          message: 'Too many beautify requests. Please wait a moment before trying again.',
+          retryAfterMs: retryAfter,
+        });
+        return;
+      }
+
       if (isBeautifying) {
         console.log('[AI] Skipping beautify request: already processing');
         return;
@@ -102,11 +133,19 @@ module.exports = (io) => {
 
       if (typeof base64Image !== 'string' || !base64Image.startsWith('data:image')) {
         console.warn('[AI] Ignoring invalid beautify_request payload');
+        socket.emit('beautify_error', {
+          code: 'invalid_payload',
+          message: 'Invalid image data for beautification.',
+        });
         return;
       }
       // avoid extremely large payloads
       if (base64Image.length > 5 * 1024 * 1024) {
         console.warn('[AI] Image payload too large, skipping AI call');
+        socket.emit('beautify_error', {
+          code: 'payload_too_large',
+          message: 'Captured image is too large to process. Please write smaller or zoom in.',
+        });
         return;
       }
 
@@ -163,8 +202,12 @@ module.exports = (io) => {
           canvasState = [];
           io.emit('beautify_result', recognizedText);
         } else if (!recognizedText) {
-          // Notify clients there's no confident result
+          // Notify requesting client there's no confident result
           io.emit('beautify_result', '');
+          socket.emit('beautify_error', {
+            code: 'no_result',
+            message: 'AI could not confidently read your handwriting. Try writing larger and clearer.',
+          });
         }
 
         isBeautifying = false;
