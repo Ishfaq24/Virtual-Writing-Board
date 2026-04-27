@@ -6,10 +6,12 @@ import {
 	Typography,
 	Stack,
 	Chip,
+	Button,
 } from '@mui/material';
 
 import GestureIcon from '@mui/icons-material/Gesture';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import LogoutIcon from '@mui/icons-material/Logout';
 
 /**
  * Top navigation and status bar for the whiteboard experience.
@@ -21,7 +23,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
  * Props:
  * - isConnected: whether the backend/socket is currently connected.
  */
-function WhiteboardToolbar({ isConnected = true }) {
+function WhiteboardToolbar({ isConnected = true, userName = '', onSignOut = null }) {
 	const statusLabel = isConnected ? 'Backend connected' : 'Local-only mode';
 	const statusColor = isConnected ? '#22c55e' : '#f97373';
 
@@ -98,6 +100,32 @@ function WhiteboardToolbar({ isConnected = true }) {
 						variant="outlined"
 						aria-label="Fist to pause tracking"
 					/>
+					{userName ? (
+						<Chip
+							size="small"
+							label={`👤 ${userName}`}
+							variant="outlined"
+							aria-label="Signed in user"
+						/>
+					) : null}
+					{typeof onSignOut === 'function' ? (
+						<Button
+							size="small"
+							variant="outlined"
+							startIcon={<LogoutIcon />}
+							onClick={onSignOut}
+							sx={{
+								color: '#e2e8f0',
+								borderColor: 'rgba(148, 163, 184, 0.6)',
+								'&:hover': {
+									borderColor: '#e2e8f0',
+									backgroundColor: 'rgba(148, 163, 184, 0.15)',
+								},
+							}}
+						>
+							Sign out
+						</Button>
+					) : null}
 				</Stack>
 			</MuiToolbar>
 		</AppBar>

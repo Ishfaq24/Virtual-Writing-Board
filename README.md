@@ -122,6 +122,7 @@ Define the following environment variables in `.env` files for each respective m
 | `PORT` | `5000` | Port for the Node.js server. |
 | `CLIENT_ORIGIN` | `http://localhost:5173,http://localhost:5174` | Comma-separated allowed frontend origins. |
 | `MONGO_URI` | `mongodb://127.0.0.1:27017/virtual_whiteboard` | MongoDB connection string for board metadata persistence. |
+| `JWT_SECRET` | `dev-jwt-secret-change-me` | Secret key used to sign authentication JWT tokens. |
 | `REDIS_URL` | `null` | Redis connection string for multi-instance scaling. |
 
 ### Edge AI (`cv-module/.env`)
@@ -204,6 +205,17 @@ Then run backend and frontend as usual. The UI now includes:
 
 - `Save as PDF` button
 - `Saved PDFs` panel with quick open links
+
+## 🔐 Authentication (New)
+
+The app now requires authentication before opening the whiteboard.
+
+- `POST /api/auth/signup` to create account
+- `POST /api/auth/signin` to login
+- `POST /api/auth/signout` to logout (client token is cleared locally)
+- `GET /api/auth/me` to fetch current user profile from token
+
+Board PDF APIs are now protected and user-scoped.
 
 ---
 
