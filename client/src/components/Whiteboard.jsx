@@ -14,9 +14,12 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import DownloadIcon from '@mui/icons-material/Download';
 
 // For this Vite client we read the socket URL from env with a safe fallback
 const SOCKET_SERVER_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const API_SERVER_URL = import.meta.env.VITE_API_URL || SOCKET_SERVER_URL;
 
 const createClientId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -37,6 +40,9 @@ export default function Whiteboard() {
   const [pointer, setPointer] = useState({ x: null, y: null, mode: 'idle' });
   const [aiMode, setAiMode] = useState('word');
   const [aiError, setAiError] = useState(null);
+  const [isSavingPdf, setIsSavingPdf] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [savedBoards, setSavedBoards] = useState([]);
 
   const autoConvertTimeout = useRef(null);
   const hasUnconvertedDrawing = useRef(false);
@@ -52,7 +58,7 @@ export default function Whiteboard() {
   };
 
   const scheduleBeautify = (activeSocket = socket) => {
-    if (!hasUnconvertedDrawing.current) return;
+    if (!hasUnconvertedDrawing.current || !activeSocket?.connected) return;
 
     clearAutoConvertTimer();
     autoConvertTimeout.current = setTimeout(() => {
@@ -158,6 +164,23 @@ export default function Whiteboard() {
   };
 
   useEffect(() => {
+    const fetchSavedBoards = async () => {
+      try {
+        const response = await fetch(`${API_SERVER_URL}/api/boards`);
+        if (!response.ok) {
+          const failure = await response.json().catch(() => ({}));
+          throw new Error(failure.message || 'Failed to load saved boards.');
+        }
+
+        const payload = await response.json();
+        setSavedBoards(Array.isArray(payload?.boards) ? payload.boards : []);
+      } catch (error) {
+        console.warn('[PDF LIST ERROR]', error);
+      }
+    };
+
+    fetchSavedBoards();
+
     const newSocket = io(SOCKET_SERVER_URL);
     setSocket(newSocket);
 
@@ -262,6 +285,45 @@ export default function Whiteboard() {
     setAiMode(value);
   };
 
+  const handleSaveAsPdf = async () => {
+    setSaveError(null);
+    setIsSavingPdf(true);
+
+    try {
+      const imageDataUrl = getCanvasImage();
+      if (!imageDataUrl) {
+        throw new Error('Nothing to save yet. Draw on the board first.');
+      }
+
+      const titleBase = recentWords[0] ? `Board - ${recentWords[0]}` : 'Untitled Board';
+      const response = await fetch(`${API_SERVER_URL}/api/boards/save-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageDataUrl,
+          title: titleBase,
+          aiMode,
+          recentWords,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.message || 'Failed to save PDF.');
+      }
+
+      if (payload?.board) {
+        setSavedBoards((prev) => [payload.board, ...prev].slice(0, 30));
+      }
+    } catch (error) {
+      setSaveError(error?.message || 'Failed to save PDF.');
+    } finally {
+      setIsSavingPdf(false);
+    }
+  };
+
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: '#f0f2f5', pb: 5, pt: 10 }}>
       <WhiteboardToolbar isConnected={isConnected} />
@@ -330,6 +392,15 @@ export default function Whiteboard() {
             <Button variant="contained" color="primary" startIcon={<AutoAwesomeIcon />} onClick={handleManualBeautify} disabled={isProcessing}>
               Beautify now
             </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleSaveAsPdf}
+              disabled={isSavingPdf || isProcessing}
+            >
+              {isSavingPdf ? 'Saving PDF...' : 'Save as PDF'}
+            </Button>
             <ToggleButtonGroup
               size="small"
               exclusive
@@ -375,6 +446,47 @@ export default function Whiteboard() {
                     <ListItem key={index} sx={{ px: 0, py: 0.5 }}>
                       <FiberManualRecordIcon sx={{ fontSize: 10, color: '#3b82f6', mr: 1.5 }} />
                       <ListItemText primary={word} primaryTypographyProps={{ fontWeight: 'medium' }} />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Box>
+
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                Saved PDFs
+              </Typography>
+              {saveError ? (
+                <Typography variant="body2" sx={{ color: '#dc2626', mb: 1 }}>
+                  {saveError}
+                </Typography>
+              ) : null}
+              {savedBoards.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  Your saved board PDFs will appear here.
+                </Typography>
+              ) : (
+                <List dense sx={{ pt: 0 }}>
+                  {savedBoards.slice(0, 5).map((board) => (
+                    <ListItem key={board._id || board.fileName} sx={{ px: 0, py: 0.5 }}>
+                      <FiberManualRecordIcon sx={{ fontSize: 10, color: '#ef4444', mr: 1.5 }} />
+                      <ListItemText
+                        primary={board.title || board.fileName}
+                        secondary={new Date(board.createdAt || Date.now()).toLocaleString()}
+                        primaryTypographyProps={{ fontWeight: 'medium' }}
+                      />
+                      {board.fileUrl ? (
+                        <Button
+                          component="a"
+                          href={`${API_SERVER_URL}${board.fileUrl}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          size="small"
+                          startIcon={<DownloadIcon />}
+                        >
+                          Open
+                        </Button>
+                      ) : null}
                     </ListItem>
                   ))}
                 </List>

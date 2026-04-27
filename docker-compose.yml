@@ -1,0 +1,14 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: virtual-writing-board-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: virtual_whiteboard
+    volumes:
+      - mongodb_data:/data/db
+
+volumes:
+  mongodb_data:

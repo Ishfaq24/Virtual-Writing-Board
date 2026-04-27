@@ -6,6 +6,7 @@
     "mongoose": "^9.4.1",
     "openai": "^6.34.0",
     "socket.io": "^4.8.3",
-    "tesseract.js": "^7.0.0"
+    "tesseract.js": "^7.0.0",
+    "pdf-lib": "^1.17.1"
   }
 }

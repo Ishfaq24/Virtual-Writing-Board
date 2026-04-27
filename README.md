@@ -121,6 +121,7 @@ Define the following environment variables in `.env` files for each respective m
 |----------|---------|-------------|
 | `PORT` | `5000` | Port for the Node.js server. |
 | `CLIENT_ORIGIN` | `http://localhost:5173,http://localhost:5174` | Comma-separated allowed frontend origins. |
+| `MONGO_URI` | `mongodb://127.0.0.1:27017/virtual_whiteboard` | MongoDB connection string for board metadata persistence. |
 | `REDIS_URL` | `null` | Redis connection string for multi-instance scaling. |
 
 ### Edge AI (`cv-module/.env`)
@@ -180,6 +181,29 @@ Use this after launching the three processes:
 3. Right-click and drag to erase in the browser canvas.
 4. Confirm the backend console logs `draw_event` traffic and the canvas updates in real time.
 5. Press `C` in the OpenCV window to confirm the shared canvas clears.
+
+## 💾 Save Board as PDF (New)
+
+The whiteboard now supports saving the current board as a PDF file into the project itself.
+
+- Saved files location: `server/storage/boards/`
+- Metadata persistence: MongoDB collection `drawings`
+- API endpoints:
+      - `POST /api/boards/save-pdf`
+      - `GET /api/boards`
+
+### Start MongoDB in this project
+
+Run from the repository root:
+
+```bash
+docker compose up -d mongodb
+```
+
+Then run backend and frontend as usual. The UI now includes:
+
+- `Save as PDF` button
+- `Saved PDFs` panel with quick open links
 
 ---
 

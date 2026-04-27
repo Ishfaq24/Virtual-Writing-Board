@@ -2,9 +2,15 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const path = require('path');
 const socketHandler = require('./sockets/socketHandler');
+const connectDatabase = require('./config/db');
+const apiRoutes = require('./routes/apiRoutes');
 
 const app = express();
+connectDatabase();
+
+app.use(express.json({ limit: '12mb' }));
 
 // Restrict CORS to the configured frontend origin(s), while allowing common local dev ports.
 const DEFAULT_CLIENT_ORIGINS = [
@@ -25,6 +31,9 @@ app.use(cors({
     origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
 }));
+
+app.use('/storage', express.static(path.join(__dirname, 'storage')));
+app.use('/api', apiRoutes);
 
 // Simple health-check endpoint for readiness/liveness probes
 app.get('/health', (_req, res) => {
