@@ -90,6 +90,7 @@ async function saveBoardAsPdf(req, res) {
 		await fs.writeFile(absolutePath, pdfBytes);
 
 		const storedBoard = await Drawing.create({
+			owner: req.user.id,
 			title: sanitizeTitle(title),
 			aiMode: ['word', 'phrase', 'math'].includes(aiMode) ? aiMode : 'unknown',
 			recentWords: Array.isArray(recentWords)
@@ -122,7 +123,7 @@ async function listSavedBoards(_req, res) {
 	}
 
 	try {
-		const boards = await Drawing.find({})
+		const boards = await Drawing.find({ owner: req.user.id })
 			.sort({ createdAt: -1 })
 			.limit(30)
 			.lean();

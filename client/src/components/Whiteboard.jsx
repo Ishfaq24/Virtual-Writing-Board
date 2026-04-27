@@ -31,7 +31,7 @@ const createClientId = () => {
 
 const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
-export default function Whiteboard() {
+export default function Whiteboard({ authToken, currentUser, onSignOut }) {
   const { canvasRef, draw, clearCanvas, drawBeautifulText, getCanvasImage } = useCanvas();
   const [isProcessing, setIsProcessing] = useState(false);
   const [socket, setSocket] = useState(null);
@@ -166,9 +166,17 @@ export default function Whiteboard() {
   useEffect(() => {
     const fetchSavedBoards = async () => {
       try {
-        const response = await fetch(`${API_SERVER_URL}/api/boards`);
+        const response = await fetch(`${API_SERVER_URL}/api/boards`, {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
         if (!response.ok) {
           const failure = await response.json().catch(() => ({}));
+          if (response.status === 401 && typeof onSignOut === 'function') {
+            onSignOut();
+            return;
+          }
           throw new Error(failure.message || 'Failed to load saved boards.');
         }
 
@@ -250,7 +258,7 @@ export default function Whiteboard() {
       clearAutoConvertTimer();
       newSocket.disconnect();
     };
-  }, [draw, clearCanvas, drawBeautifulText]);
+  }, [draw, clearCanvas, drawBeautifulText, authToken, onSignOut]);
 
   const triggerBeautify = (activeSocket = socket) => {
     if (!activeSocket) return;
@@ -300,6 +308,7 @@ export default function Whiteboard() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           imageDataUrl,
@@ -311,6 +320,10 @@ export default function Whiteboard() {
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (response.status === 401 && typeof onSignOut === 'function') {
+          onSignOut();
+          return;
+        }
         throw new Error(payload.message || 'Failed to save PDF.');
       }
 
@@ -326,7 +339,11 @@ export default function Whiteboard() {
 
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: '#f0f2f5', pb: 5, pt: 10 }}>
-      <WhiteboardToolbar isConnected={isConnected} />
+      <WhiteboardToolbar
+        isConnected={isConnected}
+        userName={currentUser?.name || ''}
+        onSignOut={onSignOut}
+      />
 
       <Container maxWidth="lg" sx={{ mt: 8 }}>
         <Paper elevation={4} sx={{
