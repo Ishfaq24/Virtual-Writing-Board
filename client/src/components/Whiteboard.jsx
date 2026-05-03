@@ -6,7 +6,6 @@ import WhiteboardToolbar from './Toolbar';
 import {
   Typography, Box, Paper, Button,
   Container, Stack, Divider, List, ListItem, ListItemText,
-  IconButton,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
@@ -17,9 +16,6 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import DownloadIcon from '@mui/icons-material/Download';
-import AddIcon from '@mui/icons-material/Add';
-import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
-import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 // For this Vite client we read the socket URL from env with a safe fallback
 const SOCKET_SERVER_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
@@ -47,11 +43,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
   const [isSavingPdf, setIsSavingPdf] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [savedBoards, setSavedBoards] = useState([]);
-  // Multi-page state (keep histories in ref to avoid frequent re-renders)
-  const pagesRef = useRef([{ id: 'page-0', history: [] }]);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [pagesCount, setPagesCount] = useState(1);
-  const currentPageIndexRef = useRef(0);
 
   const autoConvertTimeout = useRef(null);
   const hasUnconvertedDrawing = useRef(false);
@@ -84,12 +75,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
     });
 
     return true;
-  };
-
-  const pushToCurrentPageHistory = (payload) => {
-    const idx = currentPageIndex;
-    if (!pagesRef.current[idx]) pagesRef.current[idx] = { id: `page-${idx}`, history: [] };
-    pagesRef.current[idx].history.push(payload);
   };
 
   const getCanvasPoint = (event) => {
@@ -133,7 +118,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
 
     draw(payload);
     setPointer({ x: point.x, y: point.y, mode: pointerModeRef.current });
-    pushToCurrentPageHistory(payload);
     emitGestureData(payload);
   };
 
@@ -157,7 +141,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
 
     draw(payload);
     setPointer({ x: point.x, y: point.y, mode: pointerModeRef.current });
-    pushToCurrentPageHistory(payload);
     emitGestureData(payload);
   };
 
@@ -171,8 +154,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
 
     draw({ action: 'stop' });
     emitGestureData({ action: 'stop' });
-    // save stop marker into current page history
-    pushToCurrentPageHistory({ action: 'stop' });
 
     if (hasUnconvertedDrawing.current) {
       scheduleBeautify();
@@ -223,12 +204,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
       }
 
       draw(data);
-      // record remote events into current page history for replay
-      try {
-        if (['draw', 'erase', 'stop', 'hover'].includes(data.action)) {
-          pushToCurrentPageHistory(data);
-        }
-      } catch (_) {}
       if (data.action === 'draw' || data.action === 'erase') {
         hasUnconvertedDrawing.current = true;
         clearAutoConvertTimer();
@@ -247,12 +222,7 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
       }
     });
 
-    newSocket.on('clear_canvas', () => {
-      // clear current page history too (use ref to avoid stale closures)
-      const idx = currentPageIndexRef.current || 0;
-      if (pagesRef.current[idx]) pagesRef.current[idx].history = [];
-      clearCanvas();
-    });
+    newSocket.on('clear_canvas', () => clearCanvas());
     newSocket.on('is_beautifying', (status) => {
       setIsProcessing(status);
       if (status) {
@@ -266,9 +236,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
       setRecentWords(prev => [beautifulText, ...prev].slice(0, 5));
       // clear any existing error on successful result
       setAiError(null);
-      // server cleared its global canvasState; clear current page history
-      const idx = currentPageIndexRef.current || 0;
-      if (pagesRef.current[idx]) pagesRef.current[idx].history = [];
     });
 
     newSocket.on('beautify_error', (err) => {
@@ -283,12 +250,7 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
     });
 
     newSocket.on('init_canvas', (history) => {
-      // initialize first page with server history and replay
-      pagesRef.current[0] = { id: 'page-0', history: Array.isArray(history) ? history.slice() : [] };
-      setPagesCount(1);
-      setCurrentPageIndex(0);
-      currentPageIndexRef.current = 0;
-      (Array.isArray(history) ? history : []).forEach(d => draw(d));
+      history.forEach(d => draw(d));
       draw({ action: 'stop' });
     });
 
@@ -319,9 +281,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
     pointerDrawingRef.current = false;
     pointerModeRef.current = 'draw';
     setPointer({ x: null, y: null, mode: 'idle' });
-    // clear local current page history
-    const idx = currentPageIndex;
-    if (pagesRef.current[idx]) pagesRef.current[idx].history = [];
   };
 
   const handleManualBeautify = () => {
@@ -339,30 +298,8 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
     setIsSavingPdf(true);
 
     try {
-      // collect images for all pages by replaying each history to the canvas
-      const pageImages = [];
-      const originalIndex = currentPageIndex;
-
-      for (let i = 0; i < pagesRef.current.length; i++) {
-        // clear canvas and replay page i
-        clearCanvas();
-        const history = pagesRef.current[i]?.history || [];
-        history.forEach(d => draw(d));
-        // ensure draw stop marker
-        draw({ action: 'stop' });
-        const imageDataUrl = getCanvasImage();
-        if (!imageDataUrl) {
-          pageImages.push(null);
-        } else {
-          pageImages.push(imageDataUrl);
-        }
-      }
-
-      // restore original page visuals
-      clearCanvas();
-      (pagesRef.current[originalIndex]?.history || []).forEach(d => draw(d));
-
-      if (pageImages.length === 0 || pageImages.every(p => !p)) {
+      const imageDataUrl = getCanvasImage();
+      if (!imageDataUrl) {
         throw new Error('Nothing to save yet. Draw on the board first.');
       }
 
@@ -374,7 +311,7 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
           Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
-          imageDataUrls: pageImages,
+          imageDataUrl,
           title: titleBase,
           aiMode,
           recentWords,
@@ -399,26 +336,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
       setIsSavingPdf(false);
     }
   };
-
-    const addNewPage = () => {
-      const nextIndex = pagesRef.current.length;
-      pagesRef.current.push({ id: `page-${nextIndex}`, history: [] });
-      setPagesCount(pagesRef.current.length);
-      setCurrentPageIndex(nextIndex);
-      currentPageIndexRef.current = nextIndex;
-      clearCanvas();
-    };
-
-    const goToPage = (index) => {
-      if (index < 0 || index >= pagesRef.current.length) return;
-      setCurrentPageIndex(index);
-      currentPageIndexRef.current = index;
-      clearCanvas();
-      (pagesRef.current[index]?.history || []).forEach(d => draw(d));
-    };
-
-    const goToPrevPage = () => goToPage(Math.max(0, currentPageIndex - 1));
-    const goToNextPage = () => goToPage(Math.min(pagesRef.current.length - 1, currentPageIndex + 1));
 
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: '#f0f2f5', pb: 5, pt: 10 }}>
@@ -501,21 +418,6 @@ export default function Whiteboard({ authToken, currentUser, onSignOut }) {
             >
               {isSavingPdf ? 'Saving PDF...' : 'Save as PDF'}
             </Button>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 1 }}>
-              <IconButton size="small" onClick={goToPrevPage} title="Previous page">
-                <ArrowBackIosNewIcon />
-              </IconButton>
-              <IconButton size="small" onClick={addNewPage} title="Add page">
-                <AddIcon />
-              </IconButton>
-              <IconButton size="small" onClick={goToNextPage} title="Next page">
-                <ArrowForwardIosIcon />
-              </IconButton>
-              <Typography variant="caption" sx={{ ml: 0.5 }}>
-                Page {currentPageIndex + 1} / {pagesRef.current.length}
-              </Typography>
-            </Box>
-
             <ToggleButtonGroup
               size="small"
               exclusive
