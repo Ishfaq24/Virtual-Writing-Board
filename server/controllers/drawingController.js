@@ -49,12 +49,18 @@ async function saveBoardAsPdf(req, res) {
 		});
 	}
 
-	const { imageDataUrl, imageDataUrls, title, aiMode, recentWords } = req.body || {};
-	// support single-image legacy payload or array of images for multi-page PDF
-	const images = Array.isArray(imageDataUrls) ? imageDataUrls : (imageDataUrl ? [imageDataUrl] : []);
-	if (images.length === 0) {
+	const { imageDataUrl, title, aiMode, recentWords } = req.body || {};
+	const parsedImage = parseBase64Image(imageDataUrl);
+
+	if (!parsedImage) {
 		return res.status(400).json({
-			message: 'Invalid image payload. Provide imageDataUrl or imageDataUrls array of PNG/JPG data URLs.',
+			message: 'Invalid image payload. Use a PNG or JPG data URL.',
+		});
+	}
+
+	if (parsedImage.buffer.length > 8 * 1024 * 1024) {
+		return res.status(413).json({
+			message: 'Image payload is too large. Keep it below 8MB.',
 		});
 	}
 
@@ -62,31 +68,19 @@ async function saveBoardAsPdf(req, res) {
 		await ensureStorageDirectory();
 
 		const pdfDoc = await PDFDocument.create();
+		const embeddedImage = parsedImage.extension === 'png'
+			? await pdfDoc.embedPng(parsedImage.buffer)
+			: await pdfDoc.embedJpg(parsedImage.buffer);
 
-		for (let i = 0; i < images.length; i++) {
-			const parsed = parseBase64Image(images[i]);
-			if (!parsed) {
-				return res.status(400).json({ message: `Invalid image at index ${i}. Use PNG or JPG data URLs.` });
-			}
-
-			if (parsed.buffer.length > 8 * 1024 * 1024) {
-				return res.status(413).json({ message: `Image at index ${i} is too large. Keep each below 8MB.` });
-			}
-
-			const embeddedImage = parsed.extension === 'png'
-				? await pdfDoc.embedPng(parsed.buffer)
-				: await pdfDoc.embedJpg(parsed.buffer);
-
-			const width = embeddedImage.width;
-			const height = embeddedImage.height;
-			const page = pdfDoc.addPage([width, height]);
-			page.drawImage(embeddedImage, {
-				x: 0,
-				y: 0,
-				width,
-				height,
-			});
-		}
+		const width = embeddedImage.width;
+		const height = embeddedImage.height;
+		const page = pdfDoc.addPage([width, height]);
+		page.drawImage(embeddedImage, {
+			x: 0,
+			y: 0,
+			width,
+			height,
+		});
 
 		const pdfBytes = await pdfDoc.save();
 		const timeStamp = Date.now();
